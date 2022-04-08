@@ -39,8 +39,8 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
     //single CID for metadata as all tokens look the same
     string private _CID;
 
-    //total supply is fixed
-    uint256 private _totalSupply = 10000;
+    uint256 private _maxSupply = 10000;
+    uint256 private _totalSupply = 0;
 
 
     // Mapping from owner to list of owned token IDs
@@ -53,10 +53,16 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
         _name = name_;
         _symbol = symbol_;
         _CID = CID;
-        _balances[msg.sender] = _totalSupply;
         _setDefaultRoyalty(royaltyAddress,royaltyBasisPts);
     }
 
+    function transferOwnership(address newOwner) public virtual onlyOwner override(Ownable) {
+        require(newOwner != address(0), "Ownable: new owner is the zero address");
+        uint256 bal = _balances[owner()];
+        _balances[owner()] = 0;
+        _balances[newOwner] = bal;
+        _transferOwnership(newOwner);
+    }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165, ERC2981) returns (bool) {
         return
@@ -65,6 +71,12 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
             super.supportsInterface(interfaceId);
     }
 
+    function mint(uint256 amount) public onlyOwner{
+        require(_balances[msg.sender]==0,"Can only mint when all minted tokens have been sold");
+        require(_totalSupply + amount <= _maxSupply,"Max supply cannot be exceeded");
+        _totalSupply += amount;
+        _balances[msg.sender] += amount;
+    }
 
     function totalSupply() public view virtual override returns (uint256) {
         return _totalSupply;
@@ -272,7 +284,7 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
      * and stop existing when they are burned (`_burn`).
      */
     function _exists(uint256 tokenId) internal view virtual returns (bool) {
-        return (tokenId>0 && tokenId < _totalSupply);
+        return (tokenId>0 && tokenId <= _totalSupply);
     }
 
     /**
@@ -386,7 +398,7 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
     function tokenOfOwnerByIndex(address owner, uint256 index) public view virtual override returns (uint256) {
         if(owner==Ownable.owner()){
             require(index<_balances[owner],"AccessToken: owner index out of bounds");
-            uint256 tokenId = _totalSupply-_balances[owner]+1;
+            uint256 tokenId = _totalSupply-_balances[owner]+ index +1;
             while(ownerOf(tokenId)!=owner){
                 if(tokenId==_totalSupply){
                     tokenId=1;
@@ -425,3 +437,5 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
     ) internal virtual {}
 
 }
+
+//CID QmZkHmH37ddu8wzrA5WifmLPismMnqn7XHEcf3dsLAY2uL
