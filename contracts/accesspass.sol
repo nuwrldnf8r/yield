@@ -1,8 +1,5 @@
-// SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v4.5.0) (token/ERC721/ERC721.sol)
-
+ // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
-
 
 /**
  * @dev Interface of the ERC165 standard, as defined in the
@@ -727,9 +724,11 @@ library Strings {
 }
 
 /**
-* @dev AccessPass NFT contract
-*/
-contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumerable, Ownable, ERC2981 {
+ * @dev Implementation of https://eips.ethereum.org/EIPS/eip-721[ERC721] Non-Fungible Token Standard, including
+ * the Metadata extension, but not including the Enumerable extension, which is available separately as
+ * {ERC721Enumerable}.
+ */
+contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
     using Address for address;
     using Strings for uint256;
 
@@ -751,50 +750,22 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
     // Mapping from owner to operator approvals
     mapping(address => mapping(address => bool)) private _operatorApprovals;
 
-    //single CID for metadata as all tokens look the same
-    string private _CID;
-
-    uint256 private _maxSupply = 10000;
-    uint256 private _totalSupply = 0;
-
-
-    // Mapping from owner to list of owned token IDs
-    mapping(address => mapping(uint256 => uint256)) private _ownedTokens;
-
-    // Mapping from token ID to index of the owner tokens list
-    mapping(uint256 => uint256) private _ownedTokensIndex;
-
-    constructor(string memory name_, string memory symbol_, string memory CID, uint96 royaltyBasisPts, address royaltyAddress) {
+    /**
+     * @dev Initializes the contract by setting a `name` and a `symbol` to the token collection.
+     */
+    constructor(string memory name_, string memory symbol_) {
         _name = name_;
         _symbol = symbol_;
-        _CID = CID;
-        _setDefaultRoyalty(royaltyAddress,royaltyBasisPts);
     }
 
-    function transferOwnership(address newOwner) public virtual onlyOwner override(Ownable) {
-        require(newOwner != address(0), "Ownable: new owner is the zero address");
-        uint256 bal = _balances[owner()];
-        _balances[owner()] = 0;
-        _balances[newOwner] = bal;
-        _transferOwnership(newOwner);
-    }
-
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165, ERC2981) returns (bool) {
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     */
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165) returns (bool) {
         return
             interfaceId == type(IERC721).interfaceId ||
             interfaceId == type(IERC721Metadata).interfaceId ||
             super.supportsInterface(interfaceId);
-    }
-
-    function mint(uint256 amount) public onlyOwner{
-        require(_balances[_msgSender()]==0,"Can only mint when all minted tokens have been sold");
-        require(_totalSupply + amount <= _maxSupply,"Max supply cannot be exceeded");
-        _totalSupply += amount;
-        _balances[_msgSender()] += amount;
-    }
-
-    function totalSupply() public view virtual override returns (uint256) {
-        return _totalSupply;
     }
 
     /**
@@ -809,9 +780,8 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
      * @dev See {IERC721-ownerOf}.
      */
     function ownerOf(uint256 tokenId) public view virtual override returns (address) {
-        require(_exists(tokenId), "ERC721: owner query for nonexistent token");
         address owner = _owners[tokenId];
-        if(owner == address(0)) owner = Ownable.owner();
+        require(owner != address(0), "ERC721: owner query for nonexistent token");
         return owner;
     }
 
@@ -834,7 +804,9 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
      */
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
         require(_exists(tokenId), "ERC721Metadata: URI query for nonexistent token");
-        return string(abi.encodePacked(_baseURI(), _CID));
+
+        string memory baseURI = _baseURI();
+        return bytes(baseURI).length > 0 ? string(abi.encodePacked(baseURI, tokenId.toString())) : "";
     }
 
     /**
@@ -843,14 +815,14 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
      * by default, can be overriden in child contracts.
      */
     function _baseURI() internal view virtual returns (string memory) {
-        return "https://ipfs.io/ipfs/";
+        return "";
     }
 
     /**
      * @dev See {IERC721-approve}.
      */
     function approve(address to, uint256 tokenId) public virtual override {
-        address owner = ownerOf(tokenId);
+        address owner = ERC721.ownerOf(tokenId);
         require(to != owner, "ERC721: approval to current owner");
 
         require(
@@ -884,46 +856,6 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
         return _operatorApprovals[owner][operator];
     }
 
-    function _addTokenToOwnerEnumeration(address to, uint256 tokenId) private {
-        uint256 length = balanceOf(to);
-        _ownedTokens[to][length] = tokenId;
-        _ownedTokensIndex[tokenId] = length;
-    }
-
-    function _removeTokenFromOwnerEnumeration(address from, uint256 tokenId) private {
-
-        uint256 lastTokenIndex = balanceOf(from) - 1;
-        uint256 tokenIndex = _ownedTokensIndex[tokenId];
-
-        // When the token to delete is the last token, the swap operation is unnecessary
-        if (tokenIndex != lastTokenIndex) {
-            uint256 lastTokenId = _ownedTokens[from][lastTokenIndex];
-
-            _ownedTokens[from][tokenIndex] = lastTokenId; // Move the last token to the slot of the to-delete token
-            _ownedTokensIndex[lastTokenId] = tokenIndex; // Update the moved token's index
-        }
-
-        // This also deletes the contents at the last position of the array
-        delete _ownedTokensIndex[tokenId];
-        delete _ownedTokens[from][lastTokenIndex];
-        
-    }
-
-
-    function _beforeTokenTransfer(
-        address from,
-        address to,
-        uint256 tokenId
-    ) internal {
-        
-        if(from != Ownable.owner()){
-            _removeTokenFromOwnerEnumeration(from, tokenId);
-        }
-        if (to != from && to != address(0)) {
-            _addTokenToOwnerEnumeration(to, tokenId); 
-        }
-        
-    }
     /**
      * @dev See {IERC721-transferFrom}.
      */
@@ -999,7 +931,7 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
      * and stop existing when they are burned (`_burn`).
      */
     function _exists(uint256 tokenId) internal view virtual returns (bool) {
-        return (tokenId>0 && tokenId <= _totalSupply);
+        return _owners[tokenId] != address(0);
     }
 
     /**
@@ -1011,10 +943,91 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
      */
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view virtual returns (bool) {
         require(_exists(tokenId), "ERC721: operator query for nonexistent token");
-        address owner = ownerOf(tokenId);
+        address owner = ERC721.ownerOf(tokenId);
         return (spender == owner || getApproved(tokenId) == spender || isApprovedForAll(owner, spender));
     }
 
+    /**
+     * @dev Safely mints `tokenId` and transfers it to `to`.
+     *
+     * Requirements:
+     *
+     * - `tokenId` must not exist.
+     * - If `to` refers to a smart contract, it must implement {IERC721Receiver-onERC721Received}, which is called upon a safe transfer.
+     *
+     * Emits a {Transfer} event.
+     */
+    function _safeMint(address to, uint256 tokenId) internal virtual {
+        _safeMint(to, tokenId, "");
+    }
+
+    /**
+     * @dev Same as {xref-ERC721-_safeMint-address-uint256-}[`_safeMint`], with an additional `data` parameter which is
+     * forwarded in {IERC721Receiver-onERC721Received} to contract recipients.
+     */
+    function _safeMint(
+        address to,
+        uint256 tokenId,
+        bytes memory _data
+    ) internal virtual {
+        _mint(to, tokenId);
+        require(
+            _checkOnERC721Received(address(0), to, tokenId, _data),
+            "ERC721: transfer to non ERC721Receiver implementer"
+        );
+    }
+
+    /**
+     * @dev Mints `tokenId` and transfers it to `to`.
+     *
+     * WARNING: Usage of this method is discouraged, use {_safeMint} whenever possible
+     *
+     * Requirements:
+     *
+     * - `tokenId` must not exist.
+     * - `to` cannot be the zero address.
+     *
+     * Emits a {Transfer} event.
+     */
+    function _mint(address to, uint256 tokenId) internal virtual {
+        require(to != address(0), "ERC721: mint to the zero address");
+        require(!_exists(tokenId), "ERC721: token already minted");
+
+        _beforeTokenTransfer(address(0), to, tokenId);
+
+        _balances[to] += 1;
+        _owners[tokenId] = to;
+
+        emit Transfer(address(0), to, tokenId);
+
+        _afterTokenTransfer(address(0), to, tokenId);
+    }
+
+    /**
+     * @dev Destroys `tokenId`.
+     * The approval is cleared when the token is burned.
+     *
+     * Requirements:
+     *
+     * - `tokenId` must exist.
+     *
+     * Emits a {Transfer} event.
+     */
+    function _burn(uint256 tokenId) internal virtual {
+        address owner = ERC721.ownerOf(tokenId);
+
+        _beforeTokenTransfer(owner, address(0), tokenId);
+
+        // Clear approvals
+        _approve(address(0), tokenId);
+
+        _balances[owner] -= 1;
+        delete _owners[tokenId];
+
+        emit Transfer(owner, address(0), tokenId);
+
+        _afterTokenTransfer(owner, address(0), tokenId);
+    }
 
     /**
      * @dev Transfers `tokenId` from `from` to `to`.
@@ -1032,7 +1045,7 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
         address to,
         uint256 tokenId
     ) internal virtual {
-        require(ownerOf(tokenId) == from, "ERC721: transfer from incorrect owner");
+        require(ERC721.ownerOf(tokenId) == from, "ERC721: transfer from incorrect owner");
         require(to != address(0), "ERC721: transfer to the zero address");
 
         _beforeTokenTransfer(from, to, tokenId);
@@ -1056,7 +1069,7 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
      */
     function _approve(address to, uint256 tokenId) internal virtual {
         _tokenApprovals[tokenId] = to;
-        emit Approval(ownerOf(tokenId), to, tokenId);
+        emit Approval(ERC721.ownerOf(tokenId), to, tokenId);
     }
 
     /**
@@ -1108,31 +1121,24 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
     }
 
     /**
-     * @dev See {IERC721Enumerable-tokenOfOwnerByIndex}.
+     * @dev Hook that is called before any token transfer. This includes minting
+     * and burning.
+     *
+     * Calling conditions:
+     *
+     * - When `from` and `to` are both non-zero, ``from``'s `tokenId` will be
+     * transferred to `to`.
+     * - When `from` is zero, `tokenId` will be minted for `to`.
+     * - When `to` is zero, ``from``'s `tokenId` will be burned.
+     * - `from` and `to` are never both zero.
+     *
+     * To learn more about hooks, head to xref:ROOT:extending-contracts.adoc#using-hooks[Using Hooks].
      */
-    function tokenOfOwnerByIndex(address owner, uint256 index) public view virtual override returns (uint256) {
-        if(owner==Ownable.owner()){
-            require(index<_balances[owner],"AccessToken: owner index out of bounds");
-            uint256 tokenId = _totalSupply-_balances[owner]+ index +1;
-            while(ownerOf(tokenId)!=owner){
-                if(tokenId==_totalSupply){
-                    tokenId=1;
-                }
-                else{
-                    tokenId++;
-                }
-            }
-            return tokenId;
-        }
-        
-        require(index < balanceOf(owner), "ERC721Enumerable: owner index out of bounds");
-        return _ownedTokens[owner][index];
-        
-    }
-
-    function tokenByIndex(uint256 index) public view virtual override returns (uint256) {
-        return index+1;
-    }
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 tokenId
+    ) internal virtual {}
 
     /**
      * @dev Hook that is called after any transfer of tokens. This includes
@@ -1150,7 +1156,215 @@ contract AccessPass is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumera
         address to,
         uint256 tokenId
     ) internal virtual {}
-
 }
 
-//CID QmZkHmH37ddu8wzrA5WifmLPismMnqn7XHEcf3dsLAY2uL
+/**
+ * @dev This implements an optional extension of {ERC721} defined in the EIP that adds
+ * enumerability of all the token ids in the contract as well as all token ids owned by each
+ * account.
+ */
+abstract contract ERC721Enumerable is ERC721, IERC721Enumerable {
+    // Mapping from owner to list of owned token IDs
+    mapping(address => mapping(uint256 => uint256)) private _ownedTokens;
+
+    // Mapping from token ID to index of the owner tokens list
+    mapping(uint256 => uint256) private _ownedTokensIndex;
+
+    // Array with all token ids, used for enumeration
+    uint256[] private _allTokens;
+
+    // Mapping from token id to position in the allTokens array
+    mapping(uint256 => uint256) private _allTokensIndex;
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     */
+    function supportsInterface(bytes4 interfaceId) public view virtual override(IERC165, ERC721) returns (bool) {
+        return interfaceId == type(IERC721Enumerable).interfaceId || super.supportsInterface(interfaceId);
+    }
+
+    /**
+     * @dev See {IERC721Enumerable-tokenOfOwnerByIndex}.
+     */
+    function tokenOfOwnerByIndex(address owner, uint256 index) public view virtual override returns (uint256) {
+        require(index < ERC721.balanceOf(owner), "ERC721Enumerable: owner index out of bounds");
+        return _ownedTokens[owner][index];
+    }
+
+    /**
+     * @dev See {IERC721Enumerable-totalSupply}.
+     */
+    function totalSupply() public view virtual override returns (uint256) {
+        return _allTokens.length;
+    }
+
+    /**
+     * @dev See {IERC721Enumerable-tokenByIndex}.
+     */
+    function tokenByIndex(uint256 index) public view virtual override returns (uint256) {
+        require(index < ERC721Enumerable.totalSupply(), "ERC721Enumerable: global index out of bounds");
+        return _allTokens[index];
+    }
+
+    /**
+     * @dev Hook that is called before any token transfer. This includes minting
+     * and burning.
+     *
+     * Calling conditions:
+     *
+     * - When `from` and `to` are both non-zero, ``from``'s `tokenId` will be
+     * transferred to `to`.
+     * - When `from` is zero, `tokenId` will be minted for `to`.
+     * - When `to` is zero, ``from``'s `tokenId` will be burned.
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     *
+     * To learn more about hooks, head to xref:ROOT:extending-contracts.adoc#using-hooks[Using Hooks].
+     */
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 tokenId
+    ) internal virtual override {
+        super._beforeTokenTransfer(from, to, tokenId);
+
+        if (from == address(0)) {
+            _addTokenToAllTokensEnumeration(tokenId);
+        } else if (from != to) {
+            _removeTokenFromOwnerEnumeration(from, tokenId);
+        }
+        if (to == address(0)) {
+            _removeTokenFromAllTokensEnumeration(tokenId);
+        } else if (to != from) {
+            _addTokenToOwnerEnumeration(to, tokenId);
+        }
+    }
+
+    /**
+     * @dev Private function to add a token to this extension's ownership-tracking data structures.
+     * @param to address representing the new owner of the given token ID
+     * @param tokenId uint256 ID of the token to be added to the tokens list of the given address
+     */
+    function _addTokenToOwnerEnumeration(address to, uint256 tokenId) private {
+        uint256 length = ERC721.balanceOf(to);
+        _ownedTokens[to][length] = tokenId;
+        _ownedTokensIndex[tokenId] = length;
+    }
+
+    /**
+     * @dev Private function to add a token to this extension's token tracking data structures.
+     * @param tokenId uint256 ID of the token to be added to the tokens list
+     */
+    function _addTokenToAllTokensEnumeration(uint256 tokenId) private {
+        _allTokensIndex[tokenId] = _allTokens.length;
+        _allTokens.push(tokenId);
+    }
+
+    /**
+     * @dev Private function to remove a token from this extension's ownership-tracking data structures. Note that
+     * while the token is not assigned a new owner, the `_ownedTokensIndex` mapping is _not_ updated: this allows for
+     * gas optimizations e.g. when performing a transfer operation (avoiding double writes).
+     * This has O(1) time complexity, but alters the order of the _ownedTokens array.
+     * @param from address representing the previous owner of the given token ID
+     * @param tokenId uint256 ID of the token to be removed from the tokens list of the given address
+     */
+    function _removeTokenFromOwnerEnumeration(address from, uint256 tokenId) private {
+        // To prevent a gap in from's tokens array, we store the last token in the index of the token to delete, and
+        // then delete the last slot (swap and pop).
+
+        uint256 lastTokenIndex = ERC721.balanceOf(from) - 1;
+        uint256 tokenIndex = _ownedTokensIndex[tokenId];
+
+        // When the token to delete is the last token, the swap operation is unnecessary
+        if (tokenIndex != lastTokenIndex) {
+            uint256 lastTokenId = _ownedTokens[from][lastTokenIndex];
+
+            _ownedTokens[from][tokenIndex] = lastTokenId; // Move the last token to the slot of the to-delete token
+            _ownedTokensIndex[lastTokenId] = tokenIndex; // Update the moved token's index
+        }
+
+        // This also deletes the contents at the last position of the array
+        delete _ownedTokensIndex[tokenId];
+        delete _ownedTokens[from][lastTokenIndex];
+    }
+
+    /**
+     * @dev Private function to remove a token from this extension's token tracking data structures.
+     * This has O(1) time complexity, but alters the order of the _allTokens array.
+     * @param tokenId uint256 ID of the token to be removed from the tokens list
+     */
+    function _removeTokenFromAllTokensEnumeration(uint256 tokenId) private {
+        // To prevent a gap in the tokens array, we store the last token in the index of the token to delete, and
+        // then delete the last slot (swap and pop).
+
+        uint256 lastTokenIndex = _allTokens.length - 1;
+        uint256 tokenIndex = _allTokensIndex[tokenId];
+
+        // When the token to delete is the last token, the swap operation is unnecessary. However, since this occurs so
+        // rarely (when the last minted token is burnt) that we still do the swap here to avoid the gas cost of adding
+        // an 'if' statement (like in _removeTokenFromOwnerEnumeration)
+        uint256 lastTokenId = _allTokens[lastTokenIndex];
+
+        _allTokens[tokenIndex] = lastTokenId; // Move the last token to the slot of the to-delete token
+        _allTokensIndex[lastTokenId] = tokenIndex; // Update the moved token's index
+
+        // This also deletes the contents at the last position of the array
+        delete _allTokensIndex[tokenId];
+        _allTokens.pop();
+    }
+}
+
+
+/**
+* @dev AccessPass NFT contract
+*/
+contract BitmartAccessToken is ERC721Enumerable, Ownable, ERC2981 {
+    
+    string private _cid;
+    uint256 private _nextTokenId;
+    uint256 private _maxMint = 10000;
+    uint256 private _mintingLeftInEpoch = 0;
+
+    constructor(string memory cid, uint96 royaltyBasisPts, address royaltyAddress) ERC721("Bitmart Access Token", "XBM"){
+       _cid = cid;
+       _setDefaultRoyalty(royaltyAddress,royaltyBasisPts);
+       _nextTokenId = 1;
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721Enumerable, ERC2981) returns (bool) {
+        return super.supportsInterface(interfaceId);
+    }
+    
+    function _baseURI()  internal override pure returns (string memory) {
+        return "https://ipfs.io/ipfs/";
+    }
+
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        require(_exists(tokenId), "Token does not exist.");
+        return string(abi.encodePacked(_baseURI(), _cid));
+    }
+    
+    function mintingLeftInEpoch() public view returns (uint256){
+        return _mintingLeftInEpoch;
+    }
+
+    function maxMint() public view returns (uint256){
+        return _maxMint;
+    }
+
+    function createMintingEpoch(uint256 amountToMint) public onlyOwner{
+        require(_mintingLeftInEpoch==0,"Cant create new epoch while in previous epoch");
+        require(totalSupply()+amountToMint<=_maxMint,"can't mint more than maxMint");
+        _mintingLeftInEpoch = amountToMint;
+
+    }
+
+    function mint() public {
+        require(_mintingLeftInEpoch>0,"Minting for this epoch is complete");
+        _mintingLeftInEpoch--;
+        _safeMint(owner(), _nextTokenId);
+        _nextTokenId++;
+    }
+    
+}
+
